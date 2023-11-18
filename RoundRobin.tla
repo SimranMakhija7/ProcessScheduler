@@ -30,7 +30,7 @@ Init ==
     /\ readyQueue = <<"t1", "t2">>
     /\ taskStatus = [t \in Tasks |-> "waiting"]
     /\ processorStatus = [ p \in Processors |-> "free"]
-    /\ taskProcessorMap = [ p \in Processors |-> {}]
+    /\ taskProcessorMap = [ p \in Processors |-> "none"]
     /\ clock = 0
 
 (* --action definitions
@@ -46,7 +46,7 @@ ExecuteTask ==
         /\ processorStatus' = [processorStatus EXCEPT ![p] = "busy"]
         /\ taskStatus' = [taskStatus EXCEPT ![Head(readyQueue)] = "executing"]
         /\ readyQueue' = Tail(readyQueue)
-    /\ UNCHANGED clock   
+    /\ clock' = clock+1   
     
    
 
@@ -56,15 +56,19 @@ ExecuteTask ==
         /\ taskProcessorMap[p] = t
         /\ taskStatus' = [taskStatus EXCEPT ![t] = "done"]
         /\ processorStatus' = [processorStatus EXCEPT ![p] = "free"]
-        /\ taskProcessorMap' = [taskProcessorMap EXCEPT ![p] = {}]
-    /\ UNCHANGED << readyQueue, clock >>
+        /\ taskProcessorMap' = [taskProcessorMap EXCEPT ![p] = "none"]
+    /\ clock' = clock+1
+    /\ UNCHANGED << readyQueue >>
 
+UpdateClock == 
+        /\ clock' = clock + 1
+        /\ UNCHANGED << readyQueue, taskStatus, processorStatus, taskProcessorMap >>
 (* --next state relation
 Describe how the system transitions from one state to another.
 *)
 Next ==
     \/ ExecuteTask    
-    \/ clock' = clock + 1
+    \/ RemoveTask
 
 (* --specification
 The system should always start in the Init state and then make transitions based on the Next relation.
