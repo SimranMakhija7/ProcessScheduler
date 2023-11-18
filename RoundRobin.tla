@@ -67,8 +67,12 @@ UpdateClock ==
 Describe how the system transitions from one state to another.
 *)
 Next ==
-    \/ ExecuteTask    
-    \/ RemoveTask
+    \/ /\ \E t \in Tasks : taskStatus[t] /= "done"
+       /\ \/ ExecuteTask
+          \/ RemoveTask
+    \/ /\ \A t \in Tasks : taskStatus[t] = "done"
+       /\ UNCHANGED vars
+
 
 (* --specification
 The system should always start in the Init state and then make transitions based on the Next relation.
