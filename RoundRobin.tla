@@ -3,10 +3,10 @@ EXTENDS Integers, Sequences
 
 \*CONSTANTS Processors, Tasks, TimeQuanta, BurstTimes
 
-Processors == {"p1","p2"}
-Tasks == {"t1","t2","t3","t4"}
+Processors == {"p1", "p2"}
+Tasks == {"t1", "t2","t3"}
 TimeQuanta == 2
-BurstTimes== [t1 |-> 10, t2 |-> 15, t3 |-> 12, t4 |-> 25]
+BurstTimes== [t1 |-> 8, t2 |-> 11, t3|-> 2]
 
 VARIABLES readyQueue, taskStatus, clock, processorStatus, taskProcessorMap, processorTimeLeft, taskRemainingTime
 
@@ -21,11 +21,11 @@ The readyQueue is initially empty, taskStatus is a mapping of each task to its s
 and the clock starts at 0.
 *)
 Init ==
-    /\ readyQueue = <<"t1","t2","t3","t4">>
+    /\ readyQueue = <<"t1","t2","t3">>
     /\ taskStatus = [t \in Tasks |-> "waiting"]
     /\ processorStatus = [ p \in Processors |-> "free"]
     /\ taskProcessorMap = [ p \in Processors |-> "none"]
-    /\ processorTimeLeft = [ p \in Processors |-> TimeQuanta]
+    /\ processorTimeLeft = [ p \in Processors |-> 0]
     /\ taskRemainingTime = [ t \in Tasks |-> BurstTimes[t]]
     /\ clock = 0
 
@@ -68,7 +68,8 @@ RemoveTask ==
 
 
 UpdateClock ==
-    /\ \A p \in Processors : (processorStatus[p] = "busy" => processorTimeLeft[p] > 0 )
+    /\ \E p \in Processors: processorStatus[p] = "busy"
+    /\ \A p \in Processors, t \in Tasks : ((processorStatus[p] = "busy" /\ t = taskProcessorMap[p]) => (processorTimeLeft[p] > 0 /\ taskRemainingTime[t] > 0))
     /\ clock' = clock + 1
     /\ processorTimeLeft' = [p \in Processors |-> IF processorStatus[p] = "busy" THEN processorTimeLeft[p] - 1 ELSE processorTimeLeft[p]]
     /\ taskRemainingTime' = [t \in Tasks |-> 
@@ -76,6 +77,7 @@ UpdateClock ==
                                 THEN taskRemainingTime[t] - 1 
                                 ELSE taskRemainingTime[t]]
     /\ UNCHANGED << readyQueue, taskStatus, processorStatus, taskProcessorMap >>
+    
 
 (* --next state relation
 Describe how the system transitions from one state to another.
@@ -88,12 +90,15 @@ Next ==
             \/ UpdateClock )
     \/ /\ \A t \in Tasks : taskStatus[t] = "done"
        /\ UNCHANGED vars
+      
+Inv == clock < 30
 
 (* --specification
 The system should always start in the Init state and then make transitions based on the Next relation.
 *)
 Spec ==
-    Init /\ [][Next]_vars
+    Init /\ [][Next]_vars /\ SF_vars(ExecuteTask) /\ SF_vars(PreemptTask) /\ SF_vars(RemoveTask) /\ SF_vars(UpdateClock)
+
 
 (* --safety properties
 Define safety properties like no task is executed by two processors simultaneously.
@@ -106,14 +111,14 @@ NoConcurrentExecution ==
 (* --liveness properties
 Define liveness properties like every task eventually gets executed.
 *)
-FairExecution ==
+AllTasksDone ==
     \A t \in Tasks : <>(taskStatus[t] = "done")
 
 (* --model checking
 Specify the properties to be checked by the model checker.
 *)
 Properties ==
-    /\ FairExecution
+    /\ AllTasksDone
     /\ NoConcurrentExecution
 
 =============================================================================
