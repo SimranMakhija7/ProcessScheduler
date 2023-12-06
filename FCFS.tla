@@ -1,102 +1,89 @@
----------------------- MODULE RoundRobin ----------------------
+------------------------------ MODULE Untitled ------------------------------
+
 EXTENDS Integers, Sequences
 
-CONSTANTS Processors
+Processors == {"p1", "p2"}
+Tasks == {"t1", "t2", "t3"}
+BurstTimes == [t1 |-> 8, t2 |-> 11, t3 |-> 2]
 
-Tasks == {"t1","t2"}
+VARIABLES readyQueue, taskStatus, clock, processorStatus, taskProcessorMap, taskRemainingTime
 
-VARIABLES readyQueue, taskStatus, clock, processorStatus, taskProcessorMap
-
-vars  == <<readyQueue, taskStatus, clock, processorStatus, taskProcessorMap>>
+vars == <<readyQueue, taskStatus, clock, processorStatus, taskProcessorMap, taskRemainingTime>>
 
 TypeOK ==
-        /\ taskStatus \in {"waiting", "executing", "done"}
-        /\ processorStatus \in {"busy", "free" }
+    /\ taskStatus \in {"waiting", "executing", "done"}
+    /\ processorStatus \in {"busy", "free"}
 
-(* -- Convert a set to a sequence *)
-\*SetToSeq(S) ==
-\*    LET SeqBuilder(s) == IF s = {} THEN << >>
-\*                         ELSE LET elem == CHOOSE x \in s: TRUE
-\*                              IN  << elem >> \o SeqBuilder(s \ {elem})
-\*    IN  SeqBuilder(S)
-\*
-\*TasksSeq == SetToSeq(Tasks)         
-    
-(* --initial state definition
-The readyQueue is initially empty, taskStatus is a mapping of each task to its state,
-and the clock starts at 0.
-*)
 Init ==
-    /\ readyQueue = <<"t1", "t2">>
+    /\ readyQueue = <<"t1", "t2", "t3">>
     /\ taskStatus = [t \in Tasks |-> "waiting"]
-    /\ processorStatus = [ p \in Processors |-> "free"]
-    /\ taskProcessorMap = [ p \in Processors |-> "none"]
+    /\ processorStatus = [p \in Processors |-> "free"]
+    /\ taskProcessorMap = [p \in Processors |-> "none"]
+    /\ taskRemainingTime = [t \in Tasks |-> BurstTimes[t]]
     /\ clock = 0
-
-(* --action definitions
-Define actions for scheduling tasks, executing tasks, and updating the queue.
-*)
 
 ExecuteTask ==
     /\ Len(readyQueue) > 0
     /\ taskStatus[Head(readyQueue)] = "waiting"
-    /\ \E p \in Processors : 
+    /\ \E p \in Processors :
         /\ processorStatus[p] = "free"
         /\ taskProcessorMap' = [taskProcessorMap EXCEPT ![p] = Head(readyQueue)]
         /\ processorStatus' = [processorStatus EXCEPT ![p] = "busy"]
         /\ taskStatus' = [taskStatus EXCEPT ![Head(readyQueue)] = "executing"]
         /\ readyQueue' = Tail(readyQueue)
-    /\ clock' = clock+1   
-    
-   
+    /\ UNCHANGED << clock, taskRemainingTime >>
 
- RemoveTask ==
-    /\ \E t \in Tasks, p \in Processors : 
+RemoveTask ==
+    /\ \E t \in Tasks, p \in Processors :
         /\ taskStatus[t] = "executing"
         /\ taskProcessorMap[p] = t
+        /\ taskRemainingTime[t] = 0
         /\ taskStatus' = [taskStatus EXCEPT ![t] = "done"]
         /\ processorStatus' = [processorStatus EXCEPT ![p] = "free"]
         /\ taskProcessorMap' = [taskProcessorMap EXCEPT ![p] = "none"]
-    /\ clock' = clock+1
-    /\ UNCHANGED << readyQueue >>
+    /\ UNCHANGED << readyQueue, clock, taskRemainingTime >>
 
-UpdateClock == 
-        /\ clock' = clock + 1
-        /\ UNCHANGED << readyQueue, taskStatus, processorStatus, taskProcessorMap >>
-(* --next state relation
-Describe how the system transitions from one state to another.
-*)
+UpdateClock ==
+    /\ \E p \in Processors: processorStatus[p] = "busy"
+    /\ \A p \in Processors, t \in Tasks : ((processorStatus[p] = "busy" /\ t = taskProcessorMap[p]) => (taskRemainingTime[t] > 0))
+    /\ clock' = clock + 1
+    /\ taskRemainingTime' = [t \in Tasks |-> 
+                                IF \E p \in Processors: taskProcessorMap[p] = t /\ taskStatus[t] = "executing"
+                                THEN taskRemainingTime[t] - 1
+                                ELSE taskRemainingTime[t]]
+    /\ UNCHANGED << readyQueue, taskStatus, processorStatus, taskProcessorMap >>
+
 Next ==
     \/ /\ \E t \in Tasks : taskStatus[t] /= "done"
-       /\ \/ ExecuteTask
-          \/ RemoveTask
+       /\ (   ExecuteTask
+            \/ RemoveTask
+            \/ UpdateClock )
     \/ /\ \A t \in Tasks : taskStatus[t] = "done"
        /\ UNCHANGED vars
 
+Inv == clock < 30
 
-(* --specification
-The system should always start in the Init state and then make transitions based on the Next relation.
-*)
 Spec ==
-    Init /\ [][Next]_vars
-
+    Init /\ [][Next]_vars /\ SF_vars(ExecuteTask) /\ SF_vars(RemoveTask) /\ SF_vars(UpdateClock)
+    
 (* --safety properties
 Define safety properties like no task is executed by two processors simultaneously.
 *)
-\*NoConcurrentExecution ==
-\*    /\ \A p1, p2 \in Processors:
-\*         p1 /= p2 => (taskStatus[p1] /= "busy" \/ taskStatus[p2] /= "busy")
+NoConcurrentExecution ==
+    \A p1, p2 \in Processors : 
+        \A t \in Tasks :
+            (taskProcessorMap[p1] = t /\ taskProcessorMap[p2] = t) => p1 = p2
 
 (* --liveness properties
 Define liveness properties like every task eventually gets executed.
 *)
-FairExecution ==
+AllTasksDone ==
     \A t \in Tasks : <>(taskStatus[t] = "done")
 
-(* --model checking
-Specify the properties to be checked by the model checker.
-*)
 Properties ==
-    /\ FairExecution
-
+    /\ AllTasksDone
+    /\ NoConcurrentExecution
 =============================================================================
+\* Modification History
+\* Last modified Wed Dec 06 15:33:46 EST 2023 by sarthakd
+\* Created Wed Dec 06 15:32:53 EST 2023 by sarthakd
