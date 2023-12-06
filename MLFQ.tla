@@ -102,16 +102,7 @@ UpdateClock ==
                                 ELSE taskRemainingTime[t]]
     /\ UNCHANGED << queue1, queue2, queue3, taskStatus, processorStatus, taskProcessorMap >>
     
-\*UpdateClock ==
-\*    /\ \A p \in Processors : (processorStatus[p] = "busy" => processorTimeLeft[p] > 0 )
-\*    /\ clock' = clock + 1
-\*    /\ processorTimeLeft' = [p \in Processors |-> IF processorStatus[p] = "busy" THEN processorTimeLeft[p] - 1 ELSE processorTimeLeft[p]]
-\*    /\ taskRemainingTime' = [t \in Tasks |-> 
-\*                                IF \E p \in Processors: taskProcessorMap[p] = t /\ taskStatus[t] = "executing" 
-\*                                THEN taskRemainingTime[t] - 1 
-\*                                ELSE taskRemainingTime[t]]
-\*    /\ UNCHANGED << queue1, queue2, queue3, taskStatus, processorStatus, taskProcessorMap >>
-    
+
 (* --next state relation
 Describe how the system transitions from one state to another.
 *)
@@ -139,21 +130,40 @@ NoConcurrentExecution ==
     \A p1, p2 \in Processors : 
         \A t \in Tasks :
             (taskProcessorMap[p1] = t /\ taskProcessorMap[p2] = t) => p1 = p2
-
+            
+\*A safety property that ensures that no task is executed more than its burst time 
+ ExecutionWithinBurstTime == \A t \in Tasks: taskRemainingTime[t] >= 0
 (* --liveness properties
 Define liveness properties like every task eventually gets executed.
 *)
 FairExecution ==
     \A t \in Tasks : <>(taskStatus[t] = "done")
 
+EventuallyQueuesEmpty == <>[] (Len(queue1) = 0 /\ Len(queue2) = 0 /\ Len(queue3) = 0)
+EventuallyProcessorsFree == <> (\A p \in Processors: processorStatus[p] = "free")
+
+\*A liveness property that ensures that every task that is waiting in a queue eventually gets the CPU
+NoStarvation ==
+        \A t \in Tasks: (taskStatus[t] = "waiting") => <>(taskStatus[t] = "executing")
+
+
+\*A liveness property that ensures that every task that is executing by a processor eventually finishes its execution, which means that no task is executed indefinitely.
+Termination == 
+        \A t \in Tasks: (taskStatus[t] = "executing") => <>(taskStatus[t] = "done")
 (* --model checking
 Specify the properties to be checked by the model checker.
 *)
 Properties ==
     /\ FairExecution
     /\ NoConcurrentExecution
-
+    /\ EventuallyQueuesEmpty
+    /\ EventuallyProcessorsFree
+    /\ ExecutionWithinBurstTime
+    /\ NoStarvation
+    /\ Termination
+    
 =============================================================================
 \* Modification History
+\* Last modified Tue Dec 05 22:32:18 EST 2023 by simranmakhija
 \* Last modified Mon Dec 04 13:52:43 EST 2023 by sarthakd
 \* Created Wed Nov 29 02:44:25 EST 2023 by sarthakd
